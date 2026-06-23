@@ -262,8 +262,18 @@ def procesar_etl():
         try:
             # 1. Leer el CSV
             df_raw = pd.read_csv(archivo, encoding="latin1")
-            df_raw.columns = df_raw.columns.str.strip()
+            df_raw = pd.read_csv(archivo, encoding="utf-8-sig")
 
+            df_raw.columns = (
+                df_raw.columns.astype(str)
+                .str.replace("\ufeff", "", regex=False)
+                .str.replace("ï»¿", "", regex=False)
+                .str.strip()
+                .str.upper()
+            )
+
+            print(df_raw.columns.tolist())
+            
             # 2. Crear un DataFrame que solo tenga las columnas finales
             df = pd.DataFrame()
 
@@ -309,122 +319,6 @@ def procesar_etl():
 
     if not datos_total:
         messagebox.showerror("Error", "No se pudieron procesar archivos")
-        return
-
-    # =========================
-    # PRIMER GUARDO: df_nuevos a partir de los datos de CSVs
-    # =========================
-    df_nuevos = pd.concat(datos_total, ignore_index=True)
-
-    # Asegurar columnas en df_nuevos
-    df_nuevos.columns = df_nuevos.columns.str.strip()
-    for col in COLUMNAS_FINALES:
-        if col not in df_nuevos.columns:
-            df_nuevos[col] = ""
-    df_nuevos = df_nuevos[COLUMNAS_FINALES]
-
-    # CONCAT parcial con histórico
-    df_final_parcial = pd.concat([df_hist, df_nuevos], ignore_index=True)
-
-    try:
-        with pd.ExcelWriter(ruta_historico, engine="openpyxl", mode="w") as writer:
-            df_final_parcial.to_excel(writer, sheet_name="BD", index=False)
-        messagebox.showinfo("Proceso completado", f"Registros agregados: {len(df_nuevos)}")
-    except Exception as e:
-        messagebox.showerror("Error al guardar", str(e))
-        return
-
-    barra["value"] = 0
-
-    # =========================
-    # SEGUNDA PASADA: reconstruir df_nuevos para historial y asegurar SSID
-    # =========================
-    datos_total = []  # reiniciar para la segunda pasada
-
-    for i, archivo in enumerate(archivos):
-        zona = detectar_zona(archivo)
-
-        try:
-            # 1. Leer el archivo
-            df_raw = pd.read_csv(archivo, encoding="latin1")
-
-            # 2. LIMPIEZA CRÍTICA: Eliminar espacios en los nombres de las columnas
-            df_raw.columns = df_raw.columns.str.strip()
-
-            # 3. Crear DataFrame objetivo
-            df = pd.DataFrame(columns=COLUMNAS_FINALES)
-
-            # 4. Mapeo seguro: usamos .get() para evitar errores si el nombre varía ligeramente
-            df["SSID"] = df_raw.get("SSID", "")
-            df["BSSID"] = df_raw.get("BSSID", "")
-            df["SIGNAL"] = df_raw.get("SIGNAL", "")
-            # Ajusta AUTHENTICATION/ENCRYPTION si el CSV los tiene truncados (ej: AUTHENTI)
-            df["AUTHENTICATION"] = df_raw.get("AUTHENTICATION", df_raw.get("AUTHENTI", ""))
-            df["ENCRYPTION"] = df_raw.get("ENCRYPTION", df_raw.get("ENCRYPTIO", ""))
-
-            # 5. Rellenar lo demás
-            fecha_partes = descomponer_fecha(fecha_usuario, horas[zona])
-            df["DAY_DATE"] = fecha_partes["DAY_DATE"]
-            df["MONTH_DATE"] = fecha_partes["MONTH_DATE"]
-            df["YEAR_DATE"] = fecha_partes["YEAR_DATE"]
-            df["HOUR_DATE"] = fecha_partes["HOUR_DATE"]
-            df["MERIDIEM_DATE"] = fecha_partes["MERIDIEM_DATE"]
-            df["POINT"] = zona
-            df["MES"] = mes_valor
-
-        except Exception as e:
-            print(f"Error procesando {archivo}: {e}")
-            continue
-
-        # =========================
-        # ELIMINAR DATE(UTC) si existiera
-        # =========================
-        if "DATE(UTC)" in df.columns:
-            df.drop(columns=["DATE(UTC)"], inplace=True)
-
-        # =========================
-        # NUEVAS COLUMNAS DE FECHA
-        # =========================
-        fecha_partes = descomponer_fecha(fecha_usuario, horas[zona])
-        df["DAY_DATE"] = fecha_partes["DAY_DATE"]
-        df["MONTH_DATE"] = fecha_partes["MONTH_DATE"]
-        df["YEAR_DATE"] = fecha_partes["YEAR_DATE"]
-        df["HOUR_DATE"] = fecha_partes["HOUR_DATE"]
-        df["MERIDIEM_DATE"] = fecha_partes["MERIDIEM_DATE"]
-
-        # =========================
-        # CAMPOS FIJOS
-        # =========================
-        df["POINT"] = zona
-        df["MES"] = mes_valor
-
-        # =========================
-        # SSID
-        # =========================
-        # Normalizamos de nuevo por si acaso
-        df.columns = df.columns.str.strip()
-
-        if "SSID" not in df.columns:
-            df["SSID"] = ""
-        else:
-            df["SSID"] = df["SSID"].fillna("").astype(str).str.strip()
-
-        # =========================
-        # AJUSTAR COLUMNAS
-        # =========================
-        for col in COLUMNAS_FINALES:
-            if col not in df.columns:
-                df[col] = ""
-
-        df = df[COLUMNAS_FINALES]
-
-        datos_total.append(df)
-
-        barra["value"] = i + 1
-        ventana.update_idletasks()
-
-    if not datos_total:
-        messagebox.showerror("Error","No se pudieron procesar archivos")
         return
 
     # LIMPIAR HISTÓRICO (estructura final)

@@ -1,0 +1,16 @@
+poweshell en la ubicación
+
+1. Si fuera .env
+.\.env\Scripts\Activate
+
+2. INSTALAR DEPENDENCIAS
+pip install pandas openpyxl
+
+3.1 PROBAR LA APP
+python app_etl_wifi_v3.py
+
+3.2. PARA EL .exe
+pip install pyinstaller
+
+3.2.1 O con icono para el .exe
+pyinstaller --onefile --windowed --icon=icono.ico tu_script.py
